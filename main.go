@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/joho/godotenv"
-	"os"
 	"io"
 	"net/http"
+	"os"
 )
 
 const (
-	API_VERSION     = "v24.0"
-	BASE_URL        = "https://graph.facebook.com/%s/%s/messages"
+	API_VERSION = "v24.0"
+	BASE_URL    = "https://graph.facebook.com/%s/%s/messages"
 )
 
 type App struct {
@@ -20,10 +20,10 @@ type App struct {
 }
 
 type Config struct {
-	VerifyToken string
-	AccessToken string
+	VerifyToken   string
+	AccessToken   string
 	PhoneNumberID string
-	Port string
+	Port          string
 }
 
 // Payload received from the WhatsApp webhooks. Includes incoming messages and any updates to messages sent
@@ -58,10 +58,10 @@ func loadConfig() Config {
 	_ = godotenv.Load()
 
 	config := Config{
-		VerifyToken: os.Getenv("VERIFY_TOKEN"),
-		AccessToken: os.Getenv("ACCESS_TOKEN"),
+		VerifyToken:   os.Getenv("VERIFY_TOKEN"),
+		AccessToken:   os.Getenv("ACCESS_TOKEN"),
 		PhoneNumberID: os.Getenv("PHONE_NUMBER_ID"),
-		Port: os.Getenv("PORT"),
+		Port:          os.Getenv("PORT"),
 	}
 
 	if config.VerifyToken == "" || config.AccessToken == "" || config.PhoneNumberID == "" {
@@ -90,7 +90,7 @@ func main() {
 	mux.HandleFunc("POST /webhook", app.handleReceivedMessage)
 
 	fmt.Printf("Server listening on port %s...\n", config.Port)
-	err := http.ListenAndServe(":" + config.Port, mux)
+	err := http.ListenAndServe(":"+config.Port, mux)
 	if err != nil {
 		fmt.Printf("Server failed to start: %v\n", err)
 		os.Exit(1)
@@ -179,7 +179,7 @@ func (app *App) sendResponseMessage(to, text string) error {
 	}
 
 	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer " + app.Config.AccessToken)
+	request.Header.Set("Authorization", "Bearer "+app.Config.AccessToken)
 
 	// Execute the request
 	client := &http.Client{}
