@@ -12,6 +12,7 @@ func main() {
 	app := &App{
 		Config: &config,
 		Client: &http.Client{},
+		States: make(map[string]*ConversationState),
 	}
 
 	if err := app.Run(); err != nil {
