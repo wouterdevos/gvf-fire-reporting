@@ -37,7 +37,7 @@ func (app *App) handleReceivedMessage(w http.ResponseWriter, r *http.Request) {
 	// This will show you the "Raw" WhatsApp JSON structure in your terminal
 	fmt.Printf("Received WhatsApp JSON: %s\n", string(body))
 
-	var payload WhatsAppPayload
+	var payload WebhookPayload
 	jsonErr := json.Unmarshal(body, &payload)
 	if jsonErr != nil {
 		fmt.Printf("Error decoding JSON: %v\n", jsonErr)
@@ -48,14 +48,13 @@ func (app *App) handleReceivedMessage(w http.ResponseWriter, r *http.Request) {
 	if len(payload.Entry) > 0 && len(payload.Entry[0].Changes) > 0 {
 		value := payload.Entry[0].Changes[0].Value
 
-		if len(value.Messages) > 0 {
+		if len(value.WebhookMessages) > 0 {
 			// This is an actual incoming text message
-			msg := value.Messages[0]
+			msg := value.WebhookMessages[0]
 			fmt.Printf("\n[REPLY RECEIVED]\nFrom: %s\nMessage: %s\n", msg.From, msg.Text.Body)
 
-			// Trigger the replay
-			responseText := "You said: " + msg.Text.Body
-			err := app.sendResponseMessage(msg.From, responseText)
+			// Handle the incoming message
+			err := app.handleIncomingMessage(msg)
 			if err != nil {
 				fmt.Printf("Failed to send reply: %v\n", err)
 			}
@@ -66,4 +65,80 @@ func (app *App) handleReceivedMessage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func (app *App) handleIncomingMessage(msg WebhookMessage) error {
+	state := app.getOrCreateState(msg.From)
+
+	app.Mutex.Lock()
+	defer app.Mutex.Unlock()
+
+	var messagePayload any
+	switch state.CurrentStep {
+	case StepNone:
+		state.CurrentStep = StepLocation
+		messagePayload = app.getLocationRequestMessage(msg.From, "Welcome! To report a fire, please send the location.")
+	case StepLocation:
+		if msg.Type == "location" {
+			latLon := fmt.Sprintf("%f,%f", msg.Location.Latitude, msg.Location.Longitude)
+			state.Details["location"] = latLon
+			state.CurrentStep = StepDone
+			messagePayload = app.getTextMessage(msg.From, "Thank you, report received")
+		} else {
+			messagePayload = app.getLocationRequestMessage(msg.From, "Please use the 'Send location' button to report the fire.")
+		}
+	case StepDone:
+		if msg.Text.Body == "New" {
+			state.CurrentStep = StepLocation
+			state.Details["location"] = ""
+			messagePayload = app.getLocationRequestMessage(msg.From, "Starting new report. Please send location.")
+		} else {
+			messagePayload = app.getTextMessage(msg.From, "Report already submitted. Reply 'New' to start over.")
+		}
+	}
+
+	return app.sendResponseMessage(messagePayload)
+}
+
+func (app *App) getOrCreateState(phoneNumber string) *ConversationState {
+	app.Mutex.Lock()
+	defer app.Mutex.Unlock()
+
+	if state, exists := app.States[phoneNumber]; exists {
+		return state
+	}
+
+	app.States[phoneNumber] = &ConversationState{
+		CurrentStep: StepNone,
+		Details:     make(map[string]string),
+	}
+	return app.States[phoneNumber]
+}
+
+func (app *App) getTextMessage(to string, body string) *TextMessage {
+	message := TextMessage{
+		BaseMessage: BaseMessage{
+			MessagingProduct: "whatsapp",
+			To:               to,
+			Type:             "text",
+		},
+	}
+	message.Text.Body = body
+
+	return &message
+}
+
+func (app *App) getLocationRequestMessage(to string, text string) *LocationRequestMessage {
+	message := LocationRequestMessage{
+		BaseMessage: BaseMessage{
+			MessagingProduct: "whatsapp",
+			To:               to,
+			Type:             "interactive",
+		},
+	}
+	message.Interactive.Type = "location_request_message"
+	message.Interactive.Body.Text = text
+	message.Interactive.Action.Name = "send_location"
+
+	return &message
 }

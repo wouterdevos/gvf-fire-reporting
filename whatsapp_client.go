@@ -13,19 +13,14 @@ const (
 	BASE_URL    = "https://graph.facebook.com/%s/%s/messages"
 )
 
-// Send a response message to a person
-func (app *App) sendResponseMessage(to, text string) error {
+// Send a response message to a WhatsApp user
+func (app *App) sendResponseMessage(messagePayload any) error {
 	url := fmt.Sprintf(BASE_URL, API_VERSION, app.Config.PhoneNumberID)
 
-	// Prepare the JSON payload
-	responseData := WhatsAppResponse{
-		MessagingProduct: "whatsapp",
-		To:               to,
-		Type:             "text",
+	jsonData, err := json.Marshal(messagePayload)
+	if err != nil {
+		return err
 	}
-	responseData.Text.Body = text
-
-	jsonData, _ := json.Marshal(responseData)
 
 	// Create the request
 	request, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
