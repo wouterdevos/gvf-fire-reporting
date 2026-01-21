@@ -5,6 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
+)
+
+const (
+	REPLY_REPORT_ID   = "report-reply"
+	REPLY_DONATE_ID   = "donate-reply"
+	REPLY_CONTACTS_ID = "contacts-reply"
 )
 
 func (app *App) verifyServer(w http.ResponseWriter, r *http.Request) {
@@ -76,9 +83,28 @@ func (app *App) handleIncomingMessage(msg WebhookMessage) error {
 	var messagePayload any
 	switch state.CurrentStep {
 	case StepNone:
-		state.CurrentStep = StepLocation
-		messagePayload = app.getLocationRequestMessage(msg.From, "Welcome! To report a fire, please send the location.")
-	case StepLocation:
+		state.CurrentStep = StepMenu
+		messagePayload = app.getReplyButtonsMessage(msg.From, "Welcome! Please select an option below to proceed.")
+	case StepMenu:
+		if !(msg.Type == "interactive" && msg.Interactive.Type == "button_reply") {
+			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
+			break
+		}
+		id := msg.Interactive.ButtonReply.ID
+		switch id {
+		case REPLY_REPORT_ID:
+			state.CurrentStep = StepReport
+			messagePayload = app.getLocationRequestMessage(msg.From, "To report a fire, please send the location.")
+		case REPLY_DONATE_ID:
+			state.CurrentStep = StepDone
+			messagePayload = app.getTextMessage(msg.From, "Please donate here.")
+		case REPLY_CONTACTS_ID:
+			state.CurrentStep = StepDone
+			messagePayload = app.getTextMessage(msg.From, "Here are the contacts.")
+		default:
+			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
+		}
+	case StepReport:
 		if msg.Type == "location" {
 			latLon := fmt.Sprintf("%f,%f", msg.Location.Latitude, msg.Location.Longitude)
 			state.Details["location"] = latLon
@@ -88,12 +114,13 @@ func (app *App) handleIncomingMessage(msg WebhookMessage) error {
 			messagePayload = app.getLocationRequestMessage(msg.From, "Please use the 'Send location' button to report the fire.")
 		}
 	case StepDone:
-		if msg.Text.Body == "New" {
-			state.CurrentStep = StepLocation
+		// Ignore the case of the text and check if "menu" was returned by the customer
+		if strings.EqualFold(msg.Text.Body, "Menu") {
+			state.CurrentStep = StepMenu
 			state.Details["location"] = ""
-			messagePayload = app.getLocationRequestMessage(msg.From, "Starting new report. Please send location.")
+			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
 		} else {
-			messagePayload = app.getTextMessage(msg.From, "Report already submitted. Reply 'New' to start over.")
+			messagePayload = app.getTextMessage(msg.From, "To show the menu again reply 'Menu'.")
 		}
 	}
 
@@ -141,4 +168,33 @@ func (app *App) getLocationRequestMessage(to string, text string) *LocationReque
 	message.Interactive.Action.Name = "send_location"
 
 	return &message
+}
+
+func (app *App) getReplyButtonsMessage(to string, text string) *ReplyButtonsMessage {
+	message := ReplyButtonsMessage{
+		BaseMessage: BaseMessage{
+			MessagingProduct: "whatsapp",
+			To:               to,
+			Type:             "interactive",
+		},
+	}
+	message.Interactive.Type = "button"
+	message.Interactive.Body.Text = text
+	message.Interactive.Action.Buttons = []ReplyButton{
+		app.getReplyButton(REPLY_REPORT_ID, "Report a fire"),
+		app.getReplyButton(REPLY_DONATE_ID, "Donate money"),
+		app.getReplyButton(REPLY_CONTACTS_ID, "Emergency numbers"),
+	}
+
+	return &message
+}
+
+func (app *App) getReplyButton(id string, title string) ReplyButton {
+	return ReplyButton{
+		Type:  "reply",
+			Reply: ButtonValue{
+				ID:    id,
+				Title: title,
+			},
+	}
 }
