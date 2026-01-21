@@ -32,7 +32,8 @@ The set of prompts to display to a WhatsApp user
 */
 const (
 	StepNone PromptStep = iota
-	StepLocation
+	StepMenu
+	StepReport
 	StepDone
 )
 
@@ -46,9 +47,7 @@ type ConversationState struct {
 
 /*
 A webhook message received via WhatsApp webhooks. The same payload is used for incoming and outgoing messages
-and the main differences relate to the message Type. The different types that are currently used are:
-"text" - Plain text message contained within Text struct
-"location" - Location information contained within the Location struct
+and the main differences relate to the message Type found within WehookMessage.
 */
 type WebhookPayload struct {
 	Entry []struct {
@@ -62,7 +61,11 @@ type WebhookPayload struct {
 }
 
 /*
-A message received within a WhatsApp webhook payload
+A message received within a WhatsApp webhook payload.
+The different types that are currently used are:
+"text" - Plain text message contained within Text struct
+"interactive" - Messages that provide interaction via lists, buttons, urls etc
+"location" - Location information contained within the Location struct
 */
 type WebhookMessage struct {
 	From string `json:"from"`
@@ -70,7 +73,21 @@ type WebhookMessage struct {
 	Text struct {
 		Body string `json:"body"`
 	} `json:"text"`
-	Location WebhookLocation `json:"location"`
+	Interactive WebhookInteractive `json:"interactive"`
+	Location    WebhookLocation    `json:"location"`
+}
+
+/*
+An interactive message received within a WhatsApp webhook message.
+The different types that are currently used are:
+"button_reply" - A reply button that was selected by the user
+*/
+type WebhookInteractive struct {
+	Type        string `json:"type"`
+	ButtonReply struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	} `json:"button_reply"`
 }
 
 /*
@@ -101,6 +118,38 @@ type TextMessage struct {
 	Text struct {
 		Body string `json:"body"`
 	} `json:"text"`
+}
+
+/*
+A WhatsApp reply buttons message payload sent via WhatsApp Cloud API
+*/
+type ReplyButtonsMessage struct {
+	BaseMessage
+	Interactive struct {
+		Type string `json:"type"`
+		Body struct {
+			Text string `json:"text"`
+		} `json:"body"`
+		Action struct {
+			Buttons []ReplyButton `json:"buttons"`
+		} `json:"action"`
+	} `json:"interactive"`
+}
+
+/*
+A WhatsApp reply button for a reply buttons message
+*/
+type ReplyButton struct {
+	Type  string `json:"type"`
+	Reply ButtonValue `json:"reply"`
+}
+
+/*
+A WhatsApp button value for a reply button
+*/
+type ButtonValue struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
 }
 
 /*
