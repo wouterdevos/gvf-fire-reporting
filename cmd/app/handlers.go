@@ -12,6 +12,21 @@ const (
 	REPLY_REPORT_ID   = "report-reply"
 	REPLY_DONATE_ID   = "donate-reply"
 	REPLY_CONTACTS_ID = "contacts-reply"
+	REPLY_EFT_ID      = "eft-reply"
+	REPLY_SNAPSCAN_ID = "snapscan-id"
+
+	START_MENU_WELCOME = "Welcome!"
+	START_MENU_INFO = "Please select an option below to proceed."
+	START_MENU_HINT = "To start again reply 'Menu'."
+
+	REPORT_INFO = "To report a fire, please send the location."
+	REPORT_INFO_EXPLICIT = "Please use the 'Send location' button to report the fire."
+	REPORT_RECEIVED = "Thank you, report received"
+
+	DONATION_INFO = "Please select one of the options provided to make a donation."
+	DONATION_BANKING_DETAILS = "To make an EFT please use the following banking details:\n\nFNB\nGreyton Volunteer Firefighters NPC\nAccount Number - 63131550287\nBranch Code - 200212\n\nPlease use your name and surname as reference."
+	DONATION_SNAPSCAN_INFO = "To make a donation with SnapScan please follow the link provided."
+	DONATION_SNAPSCAN_URL = "https://pos.snapscan.io/qr/U_F7xasA"
 )
 
 func (app *App) verifyServer(w http.ResponseWriter, r *http.Request) {
@@ -84,43 +99,59 @@ func (app *App) handleIncomingMessage(msg WebhookMessage) error {
 	switch state.CurrentStep {
 	case StepNone:
 		state.CurrentStep = StepMenu
-		messagePayload = app.getReplyButtonsMessage(msg.From, "Welcome! Please select an option below to proceed.")
+		messagePayload = app.getStartMenuMessage(msg.From, START_MENU_WELCOME+" "+START_MENU_INFO)
 	case StepMenu:
 		if !(msg.Type == "interactive" && msg.Interactive.Type == "button_reply") {
-			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
+			messagePayload = app.getStartMenuMessage(msg.From, START_MENU_INFO)
 			break
 		}
 		id := msg.Interactive.ButtonReply.ID
 		switch id {
 		case REPLY_REPORT_ID:
 			state.CurrentStep = StepReport
-			messagePayload = app.getLocationRequestMessage(msg.From, "To report a fire, please send the location.")
+			messagePayload = app.getLocationRequestMessage(msg.From, REPORT_INFO)
 		case REPLY_DONATE_ID:
-			state.CurrentStep = StepDone
-			messagePayload = app.getTextMessage(msg.From, "Please donate here.")
+			state.CurrentStep = StepDonate
+			messagePayload = app.getDonationMenuMessage(msg.From, DONATION_INFO)
 		case REPLY_CONTACTS_ID:
 			state.CurrentStep = StepDone
 			messagePayload = app.getTextMessage(msg.From, "Here are the contacts.")
 		default:
-			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
+			messagePayload = app.getStartMenuMessage(msg.From, START_MENU_INFO)
 		}
 	case StepReport:
 		if msg.Type == "location" {
 			latLon := fmt.Sprintf("%f,%f", msg.Location.Latitude, msg.Location.Longitude)
 			state.Details["location"] = latLon
 			state.CurrentStep = StepDone
-			messagePayload = app.getTextMessage(msg.From, "Thank you, report received")
+			messagePayload = app.getTextMessage(msg.From, REPORT_RECEIVED)
 		} else {
-			messagePayload = app.getLocationRequestMessage(msg.From, "Please use the 'Send location' button to report the fire.")
+			messagePayload = app.getLocationRequestMessage(msg.From, REPORT_INFO_EXPLICIT)
+		}
+	case StepDonate:
+		if !(msg.Type == "interactive" && msg.Interactive.Type == "button_reply") {
+			messagePayload = app.getDonationMenuMessage(msg.From, DONATION_INFO)
+			break
+		}
+		id := msg.Interactive.ButtonReply.ID
+		switch id {
+		case REPLY_EFT_ID:
+			state.CurrentStep = StepDone
+			messagePayload = app.getTextMessage(msg.From, DONATION_BANKING_DETAILS)
+		case REPLY_SNAPSCAN_ID:
+			state.CurrentStep = StepDone
+			messagePayload = app.getURLButtonMessage(msg.From, DONATION_SNAPSCAN_INFO, "SnapScan", DONATION_SNAPSCAN_URL)
+		default:
+			messagePayload = app.getDonationMenuMessage(msg.From, DONATION_INFO)
 		}
 	case StepDone:
 		// Ignore the case of the text and check if "menu" was returned by the customer
 		if strings.EqualFold(msg.Text.Body, "Menu") {
 			state.CurrentStep = StepMenu
 			state.Details["location"] = ""
-			messagePayload = app.getReplyButtonsMessage(msg.From, "Please select an option below to proceed.")
+			messagePayload = app.getStartMenuMessage(msg.From, START_MENU_INFO)
 		} else {
-			messagePayload = app.getTextMessage(msg.From, "To show the menu again reply 'Menu'.")
+			messagePayload = app.getTextMessage(msg.From, START_MENU_HINT)
 		}
 	}
 
@@ -170,7 +201,7 @@ func (app *App) getLocationRequestMessage(to string, text string) *LocationReque
 	return &message
 }
 
-func (app *App) getReplyButtonsMessage(to string, text string) *ReplyButtonsMessage {
+func (app *App) getReplyButtonsMessage(to string, text string, buttons []ReplyButton) *ReplyButtonsMessage {
 	message := ReplyButtonsMessage{
 		BaseMessage: BaseMessage{
 			MessagingProduct: "whatsapp",
@@ -180,21 +211,51 @@ func (app *App) getReplyButtonsMessage(to string, text string) *ReplyButtonsMess
 	}
 	message.Interactive.Type = "button"
 	message.Interactive.Body.Text = text
-	message.Interactive.Action.Buttons = []ReplyButton{
-		app.getReplyButton(REPLY_REPORT_ID, "Report a fire"),
-		app.getReplyButton(REPLY_DONATE_ID, "Donate money"),
-		app.getReplyButton(REPLY_CONTACTS_ID, "Emergency numbers"),
-	}
+	message.Interactive.Action.Buttons = buttons
 
 	return &message
 }
 
 func (app *App) getReplyButton(id string, title string) ReplyButton {
 	return ReplyButton{
-		Type:  "reply",
-			Reply: ButtonValue{
-				ID:    id,
-				Title: title,
-			},
+		Type: "reply",
+		Reply: ButtonValue{
+			ID:    id,
+			Title: title,
+		},
 	}
+}
+
+func (app *App) getURLButtonMessage(to string, text string, displayText string, url string) *URLButtonMessage {
+	message := URLButtonMessage{
+		BaseMessage: BaseMessage{
+			MessagingProduct: "whatsapp",
+			To:               to,
+			Type:             "interactive",
+		},
+	}
+	message.Interactive.Type = "cta_url"
+	message.Interactive.Body.Text = text
+	message.Interactive.Action.Name = "cta_url"
+	message.Interactive.Action.Parameters.DisplayText = displayText
+	message.Interactive.Action.Parameters.URL = url
+
+	return &message
+}
+
+func (app *App) getStartMenuMessage(to string, text string) *ReplyButtonsMessage {
+	replyButtons := []ReplyButton{
+		app.getReplyButton(REPLY_REPORT_ID, "Report a fire"),
+		app.getReplyButton(REPLY_DONATE_ID, "Donate money"),
+		app.getReplyButton(REPLY_CONTACTS_ID, "Emergency numbers"),
+	}
+	return app.getReplyButtonsMessage(to, text, replyButtons)
+}
+
+func (app *App) getDonationMenuMessage(to string, text string) *ReplyButtonsMessage {
+	replyButtons := []ReplyButton{
+		app.getReplyButton(REPLY_EFT_ID, "EFT"),
+		app.getReplyButton(REPLY_SNAPSCAN_ID, "SnapScan"),
+	}
+	return app.getReplyButtonsMessage(to, text, replyButtons)
 }
