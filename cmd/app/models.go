@@ -34,6 +34,7 @@ const (
 	StepNone PromptStep = iota
 	StepMenu
 	StepReport
+	StepDonate
 	StepDone
 )
 
@@ -140,7 +141,7 @@ type ReplyButtonsMessage struct {
 A WhatsApp reply button for a reply buttons message
 */
 type ReplyButton struct {
-	Type  string `json:"type"`
+	Type  string      `json:"type"`
 	Reply ButtonValue `json:"reply"`
 }
 
@@ -164,6 +165,26 @@ type LocationRequestMessage struct {
 		} `json:"body"`
 		Action struct {
 			Name string `json:"name"`
+		} `json:"action"`
+	} `json:"interactive"`
+}
+
+/*
+A WhatsApp URL button message payload send via WhatsApp Cloud API
+*/
+type URLButtonMessage struct {
+	BaseMessage
+	Interactive struct {
+		Type string `json:"type"`
+		Body struct {
+			Text string `json:"text"`
+		} `json:"body"`
+		Action struct {
+			Name string `json:"name"`
+			Parameters struct {
+				DisplayText string `json:"display_text"`
+				URL string `json:"url"`
+			} `json:"parameters"`
 		} `json:"action"`
 	} `json:"interactive"`
 }
